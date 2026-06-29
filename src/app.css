@@ -93,6 +93,50 @@ code {
 }
 .chip strong { color: var(--slate); }
 
+.setup { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 18px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span:first-child {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+}
+.inwrap { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--gray-500); }
+.field input {
+  width: 72px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--slate);
+  padding: 7px 9px;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 8px;
+  background: #fff;
+}
+.field input:focus { outline: none; border-color: var(--slate); }
+
+.job {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 30px;
+  margin: 0 0 22px;
+  padding: 16px 20px;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 12px;
+  background: #fff;
+}
+.job-item { display: flex; flex-direction: column; gap: 3px; }
+.job-k {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+}
+.job-v { font-size: 15px; color: var(--slate); font-weight: 500; }
+.job-v.ok { color: #788C5D; }
+.job-v.bad { color: #B04A3F; }
+
 .canvas-wrap {
   border: 1.5px solid var(--gray-300);
   border-radius: 14px;

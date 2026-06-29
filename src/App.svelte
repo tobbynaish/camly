@@ -3,12 +3,18 @@
   import { parseDxf } from './lib/dxf/loadDxf';
   import { renderDxf } from './lib/render/renderDxf';
   import type { DxfDoc } from './lib/dxf/types';
+  import { analyzeJob } from './lib/analyze/jobInfo';
 
   let canvas: HTMLCanvasElement;
   let doc: DxfDoc | null = null;
   let fileName = '';
   let error = '';
   let dragOver = false;
+
+  // Setup-Eingaben, die nach dem Upload erscheinen
+  let toolDiameter = 3;
+  let stockThickness = 9;
+  let margin = 15;
 
   const TYPE_LABEL: Record<string, string> = {
     line: 'Linien',
@@ -57,6 +63,7 @@
 
   $: width = doc ? doc.bbox.maxX - doc.bbox.minX : 0;
   $: height = doc ? doc.bbox.maxY - doc.bbox.minY : 0;
+  $: job = doc ? analyzeJob(doc, { toolDiameter, stockThickness, margin }) : null;
 </script>
 
 <svelte:window on:resize={onResize} />
@@ -92,12 +99,51 @@
   {#if doc}
     <div class="info">
       <span class="chip"><strong>{fileName}</strong></span>
-      <span class="chip">Maße {fmt(width)} × {fmt(height)} mm</span>
       <span class="chip">{doc.entities.length} Konturen</span>
       {#each Object.entries(doc.counts) as [type, n]}
         <span class="chip">{n} {TYPE_LABEL[type] ?? type}</span>
       {/each}
     </div>
+
+    <div class="setup">
+      <label class="field">
+        <span>Fräser-Ø</span>
+        <span class="inwrap"><input type="number" min="0.5" step="0.5" bind:value={toolDiameter} /> mm</span>
+      </label>
+      <label class="field">
+        <span>Materialstärke</span>
+        <span class="inwrap"><input type="number" min="1" step="1" bind:value={stockThickness} /> mm</span>
+      </label>
+      <label class="field">
+        <span>Rand um die Teile</span>
+        <span class="inwrap"><input type="number" min="0" step="1" bind:value={margin} /> mm</span>
+      </label>
+    </div>
+
+    {#if job}
+      <div class="job">
+        <div class="job-item">
+          <span class="job-k">Bauteil-Maße</span>
+          <span class="job-v">{fmt(width)} × {fmt(height)} mm</span>
+        </div>
+        <div class="job-item">
+          <span class="job-k">Benötigte Platte</span>
+          <span class="job-v">{fmt(job.plateW)} × {fmt(job.plateH)} mm</span>
+        </div>
+        <div class="job-item">
+          <span class="job-k">Passt auf die Maslow</span>
+          <span class="job-v" class:ok={job.fitsMaslow} class:bad={!job.fitsMaslow}>{job.fitsMaslow ? 'ja' : 'nein, aufteilen'}</span>
+        </div>
+        <div class="job-item">
+          <span class="job-k">Bohrungen</span>
+          <span class="job-v">{job.holeCount}</span>
+        </div>
+        <div class="job-item">
+          <span class="job-k">Schnittweg, 1 Lage</span>
+          <span class="job-v">{fmt(job.cutLength / 1000)} m</span>
+        </div>
+      </div>
+    {/if}
 
     <div class="canvas-wrap">
       <canvas bind:this={canvas}></canvas>
