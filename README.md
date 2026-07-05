@@ -4,7 +4,7 @@ Browser-Tool, das CNC-Frästeile aus DXF in fräsfertigen GRBL-G-Code übersetzt
 
 ## Status
 
-Welle 1, früh. Steht: **Schritt 3, Konturklassifikation mit Klick-Korrektur.** DXF-Import, Canvas-Vorschau, Setup-Leiste und automatische Außen-/Innen-/Bohrungs-Erkennung sind da, manuelle Korrektur per Klick möglich. KI-Parameter, CAM-Offset, Tabs, Dogbones und G-Code-Export kommen in den nächsten Schritten.
+Welle 1, früh. Steht: **Schritt 3, Konturklassifikation mit Klick-Korrektur und Fräser-Eingriff.** DXF-Import, Canvas-Vorschau, Setup-Leiste, automatische Außen-/Innen-/Bohrungs-Erkennung, manuelle Korrektur per Klick, Fräser-Zentrumpfad live in der Vorschau, Konflikt-Warnung bei zu kleinen Bohrungen. KI-Parameter, Tabs, Dogbones und G-Code-Export kommen in den nächsten Schritten.
 
 ## Pipeline
 
@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Zum Ausprobieren liegt `samples/demo-rechteck.dxf` bei (ein Rechteck mit zwei Bohrungen).
+Zum Ausprobieren liegt `samples/demo-rechteck.dxf` bei (ein Rechteck mit zwei Bohrungen) und `samples/demo-tasche.dxf` (geschlossene Außenkontur mit Ausschnitt und Bohrung, triggert die Verschachtelungs-Heuristik sauber).
 
 ## Stack
 

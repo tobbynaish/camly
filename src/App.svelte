@@ -5,6 +5,7 @@
   import { fitTransform } from './lib/render/viewTransform';
   import { hitTest } from './lib/render/hitTest';
   import { classifyDoc, cycleRole, type Role } from './lib/cam/classify';
+  import { buildToolPaths } from './lib/cam/toolPath';
   import { analyzeJob } from './lib/analyze/jobInfo';
   import type { DxfDoc } from './lib/dxf/types';
 
@@ -60,7 +61,7 @@
 
   function draw() {
     if (!canvas || !doc) return;
-    renderDxf(canvas, doc, step >= 3 ? roles : undefined);
+    renderDxf(canvas, doc, step >= 3 ? roles : undefined, step >= 3 ? toolPaths?.paths : undefined);
   }
 
   function goTo(n: number) {
@@ -109,6 +110,11 @@
   $: height = doc ? doc.bbox.maxY - doc.bbox.minY : 0;
   $: job = doc ? analyzeJob(doc, { toolDiameter, stockThickness, margin }) : null;
   $: rc = roleSummary(roles);
+  $: toolPaths =
+    doc && step >= 3 ? buildToolPaths(doc.entities, roles, toolDiameter) : null;
+
+  // Neu zeichnen, wenn Fräser-Ø oder Rollen sich ändern.
+  $: if (doc && step >= 3 && (toolDiameter || roles || toolPaths)) draw();
 </script>
 
 <svelte:window on:resize={onResize} />
@@ -208,6 +214,15 @@
       <span class="lg hole">{rc.hole} Bohrungen</span>
       {#if rc.open}<span class="lg open">{rc.open} offen</span>{/if}
     </div>
+
+    {#if toolPaths && toolPaths.conflicts > 0}
+      <p class="conflict">
+        {toolPaths.conflicts} {toolPaths.conflicts === 1 ? 'Kontur' : 'Konturen'} nicht fräsbar mit Fräser Ø {toolDiameter} mm.
+        Kleinerer Fräser wählen, Kontur als Tasche fräsen oder Vorbohren.
+      </p>
+    {:else if toolPaths}
+      <p class="tool-note">Fräser-Zentrumpfad gestrichelt eingeblendet. Fräser Ø {toolDiameter} mm greift in die Geometrie ein.</p>
+    {/if}
 
     <div class="canvas-wrap">
       <canvas bind:this={canvas} class="clickable" on:click={onCanvasClick}></canvas>

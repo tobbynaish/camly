@@ -24,18 +24,42 @@ export function classifyDoc(entities: Entity[]): Role[] {
 
 function classifyOne(e: Entity, i: number, ents: Entity[]): Role {
   if (!isClosed(e)) return 'open';
-  const pt = repPoint(e);
-  let depth = 0;
-  for (let j = 0; j < ents.length; j++) {
-    if (j === i) continue;
-    const o = ents[j];
-    if (isClosed(o) && entityContains(o, pt)) depth++;
+  // Verschachtelungstiefe über mehrere Stützpunkte bestimmen, der kleinste
+  // Wert gewinnt. So ist die Heuristik robust gegen Punkte, die zufällig in
+  // einer tiefereingeschachtelten Kontur (z.B. Bohrung) liegen.
+  const samples = samplePoints(e);
+  let depth = Infinity;
+  for (const pt of samples) {
+    let d = 0;
+    for (let j = 0; j < ents.length; j++) {
+      if (j === i) continue;
+      const o = ents[j];
+      if (isClosed(o) && entityContains(o, pt)) d++;
+    }
+    if (d < depth) depth = d;
   }
+  if (!isFinite(depth)) depth = 0;
   if (e.type === 'circle') {
     if (depth % 2 === 1) return 'hole';
     return e.r * 2 <= FREE_HOLE_MAX_DIAMETER ? 'hole' : 'outer';
   }
   return depth % 2 === 0 ? 'outer' : 'inner';
+}
+
+// Stützpunkte für die Verschachtelungsprüfung. Bei Polylinien die ersten
+// Eckpunkte, bei Kreisen der Mittelpunkt.
+function samplePoints(e: Entity): Pt[] {
+  switch (e.type) {
+    case 'circle':
+    case 'arc':
+      return [repPoint(e)];
+    case 'line':
+      return [repPoint(e)];
+    case 'polyline': {
+      const pts = e.pts.slice(0, Math.min(4, e.pts.length));
+      return pts;
+    }
+  }
 }
 
 export function cycleRole(r: Role): Role {

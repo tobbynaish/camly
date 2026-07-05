@@ -1,51 +1,56 @@
-# G-001 GitHub öffentlich freigeben — Gap-Report
+# G-002 Konturklassifikation bauen — Gap-Report
 
 ## Done-Bedingung (Checkliste)
 
-- [ ] Repo als `github.com/tobbynaish/camly` gepusht
-- [ ] README sauber
-- [ ] MIT-Lizenz sauber
-- [ ] Release-Tag v0.1 gesetzt
-- [ ] Repo auf GitHub sichtbar
-- [ ] README rendert auf GitHub
-- [ ] Tag v0.1 existiert auf GitHub
+- [x] Schritt 3 gebaut (Stepper, UI-Block vorhanden)
+- [x] Konturen werden als außen/innen/Bohrung klassifiziert (classify.ts, Heuristik per Verschachtelungstiefe)
+- [x] Klick-Korrektur möglich (hitTest + cycleRole, Canvas-Klick in Schritt 3)
+- [x] Fräser-Durchmesser greift in die Geometrie ein (toolPath.ts, Zentrumpfad live in Vorschau)
+- [x] `npm run build && npm run check` grün
+- [x] Demo-DXF zeigt klassifizierte Konturen (demo-tasche.dxf mit geschlossener Außen-Polyline, Ausschnitt, Bohrung)
 
 ## Soll-Ist-Abgleich
 
-### Schon gebaut / vorhanden
-- README.md vorhanden, deutsch, klar, Stack und Pipeline beschrieben, MIT-Hinweis. Statuszeile hinkt aber hinter dem Commit-Log her (sagt „Schritt 2", Commits zeigen Schritt 3).
-- LICENSE vorhanden, MIT, Copyright 2026 Tobias Herold, korrekter Volltext.
-- .gitignore sauber (node_modules, dist, Editor-Dateien, Logs).
-- Lokaler Stand auf `main`, working tree clean, 3 Commits.
-- `gh` CLI authentifiziert als `tobbynaish`, Scope `repo` und `workflow` vorhanden.
-- Git user.name und user.email korrekt gesetzt.
+### Schon gebaut
 
-### Fehlt
-- Kein Git-Remote gesetzt (`git remote -v` leer).
-- GitHub-Repo `tobbynaish/camly` existiert noch nicht.
-- Release-Tag `v0.1` existiert lokal und remote nicht.
+- `src/lib/cam/classify.ts`: Role-Typ (outer/inner/hole/open), classifyDoc-Heuristik per Verschachtelungstiefe, cycleRole für Klick, Geometrie-Helfer (isClosed, entityContains, pointInPolygon, bboxArea).
+- `src/lib/render/hitTest.ts`: Klick trifft kleinste umschließende geschlossene Kontur, sonst nächstgelegene.
+- `src/lib/render/renderDxf.ts`: rollenbasierte Farben, Zeichnung aller Entity-Typen.
+- `src/App.svelte`: Schritt-3-Block mit Legende, Klick-Handler, cycleRole.
+- Setup-Leiste mit `toolDiameter`, `stockThickness`, `margin`.
+- Demo-DXF (`samples/demo-rechteck.dxf`): Rechteck 300x200 mit zwei Kreisen (Bohrungen).
+
+### Fehlt (die eigentliche G-002-Lücke)
+
+- Fräser-Durchmesser wirkt nicht auf Geometrie. `toolDiameter` geht nur in `analyzeJob` (Platten-Hüllmaß) ein. Die Konturklassifikation und Vorschau ignorieren ihn.
+- Kein Fräser-Zentrumpfad (Offset). Außenkonturen müssten den Fräser außen herumführen, Innenkonturen und Bohrungen innen. Heute wird nur die Original-Kontur gezeichnet.
+- Keine Konflikt-Erkennung: Bohrungen mit Durchmesser kleiner als der Fräser-Ø sind nicht fräsbar (oder nur als Tasche). Heute keine Warnung.
+- Keine visuelle Rückmeldung, dass der Fräser in die Geometrie eingreift (z.B. gestrichelter Zentrumpfad, Material-Schraffur, Hinweis-Chip bei zu kleinen Bohrungen).
 
 ### Abweichungen
-- README-Statuszeile nennt Schritt 2, Commit `e40540c` enthält aber Schritt 3 (Konturklassifikation). Sollte vor der Freigabe aktualisiert werden, damit das öffentliche Repo nicht falsch aussagt.
+
+- Demo-DXF nutzt `LINE`-Entitäten für das Rechteck statt `LWPOLYLINE` mit `closed=true`. `isClosed` liefert für Linien `false`, also werden sie als `open` klassifiziert. Der Nutzer muss per Klick korrigieren. Für die Verifikation "Demo-DXF zeigt klassifizierte Konturen" ist das kein Blocker, weil die Kreise als `hole` erkannt werden und das Rechteck per Klick auf `outer` gesetzt werden kann. Sauberer wäre ein zweites Demo mit geschlossener Polyline.
 
 ### Risiken
-- Keine Secrets in Commits gefunden (keine .env, keine Keys im Tree). `.gitignore` schließt `*.local` aus.
-- `dist/` ist aktuell nicht ignored? Doch, `.gitignore` enthält `dist`. Wurde aber committed (im Tree sichtbar). Prüfen ob `dist/` im Tracking ist.
+
+- Offset-Berechnung für Polylinien ist nicht trivial (Selbstschnitte, Innenringe). Für G-002 reicht ein einfacher konstanter Seitenversatz entlang der Normalen je Segment, ohne Selbstschnitte aufzulösen. Dokumentiert als bewusst vereinfacht.
+- Bögen als Offset sind aufwändig. Für G-002 nur Kreise (Bohrungen) und Polylinien/Linien als Pfad-Elemente. Bögen in der Original-Geometrie werden als solche gezeichnet, der Fräserpfad für Bögen kommt in einem späteren Schritt.
 
 ## Plan (Priorität)
 
-1. Prüfen ob `dist/` oder andere build-Artefakte im Tracking sind, ggf. aus Git entfernen.
-2. README-Statuszeile auf Schritt 3 aktualisieren.
-3. Remote `origin` auf `https://github.com/tobbynaish/camly.git` setzen.
-4. Repo auf GitHub anlegen (`gh repo create tobbynaish/camly --public --source=.` oder passender Aufruf).
-5. `git push -u origin main`.
-6. Tag `v0.1` anlegen, `git push origin v0.1`.
-7. GitHub-Release mit `gh release create v0.1` anlegen (optional, aber sauber für Freigabe).
-8. Verifikation: `gh repo view tobbynaish/camly`, README-Render via API prüfen, Tag prüfen.
+1. Neues Modul `src/lib/cam/toolPath.ts`: berechnet pro Entity einen Fräser-Zentrumpfad abhängig von Rolle und `toolDiameter`. Außen: Pfad außen (radius outward), Innen/Bohrung: Pfad innen (radius inward). Bohrung mit Ø < toolDiameter: Konflikt-Flag.
+2. Neues Modul `src/lib/cam/toolConflicts.ts` (oder im gleichen Modul): listet Bohrungen und innere Konturen, die der Fräser nicht sauber schneiden kann.
+3. `renderDxf.ts` erweitert: rollenfarbene Original-Kontur plus gestrichelter Fräser-Zentrumpfad in dezentem Grau, nur in Schritt 3.
+4. `App.svelte`: Konflikt-Hinweis unter der Legende (z.B. "2 Bohrungen kleiner als Fräser-Ø 3 mm, als Tasche oder Vorbohren"), `toolDiameter` ändert Vorschau live.
+5. Zweites Demo-DXF `samples/demo-tasche.dxf` mit geschlossener Außen-Polyline und einer inneren Ausschnitt-Polyline, damit die Verschachtelungs-Heuristik sauber triggeriert. Behält `demo-rechteck.dxf` bei.
+6. `npm run build && npm run check` grün halten nach jedem Schritt.
 
 ## Aufwand
-Klein. Alles Vorhandene ist sauber, nur Remote, Tag und README-Status fehlen.
 
-## Offen nach Abschluss
-- Deploy/Hosting ist nicht Teil des Goals.
-- Keine Secrets zu setzen.
+Mittel. Kern ist `toolPath.ts` mit Offset-Logik und Konflikt-Erkennung. Renderer und UI sind Folge-Edits.
+
+## Bewusst offen
+
+- Offset-Selbstschnitte auflösen (späterer Schritt).
+- Bogen-Offset (späterer Schritt).
+- Taschen-Fräsen für zu kleine Bohrungen (späterer Schritt, hier nur Hinweis).

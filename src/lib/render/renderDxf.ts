@@ -1,5 +1,6 @@
-import type { DxfDoc, Entity } from '../dxf/types';
+import type { DxfDoc, Entity, Pt } from '../dxf/types';
 import type { Role } from '../cam/classify';
+import type { ToolPath } from '../cam/toolPath';
 import { fitTransform, type ViewTransform } from './viewTransform';
 
 // Farben pro Rolle. Ohne Rollen (Schritt 2) wird neutral gezeichnet.
@@ -11,7 +12,15 @@ const COLORS: Record<string, string> = {
   open: '#87867F',   // offen
 };
 
-export function renderDxf(canvas: HTMLCanvasElement, doc: DxfDoc, roles?: Role[]): void {
+const TOOL_COLOR = '#B04A3F';     // Fräser-Zentrumpfad, gestrichelt
+const CONFLICT_COLOR = '#B04A3F'; // Konflikt-Markierung
+
+export function renderDxf(
+  canvas: HTMLCanvasElement,
+  doc: DxfDoc,
+  roles?: Role[],
+  toolPaths?: ToolPath[],
+): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
@@ -33,6 +42,39 @@ export function renderDxf(canvas: HTMLCanvasElement, doc: DxfDoc, roles?: Role[]
     const color = role ? COLORS[role] : (e.type === 'circle' ? COLORS.hole : COLORS.ink);
     drawEntity(ctx, e, t, color);
   });
+
+  // Fräser-Zentrumpfade in Schritt 3, gestrichelt über der Original-Geometrie.
+  if (toolPaths) {
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1;
+    for (const tp of toolPaths) {
+      if (tp.pts.length === 0) continue;
+      drawPath(ctx, tp.pts, tp.closed, t, TOOL_COLOR);
+    }
+    ctx.restore();
+
+    // Konflikt-Markierungen: Kreuz im Zentrum der leeren Pfade.
+    ctx.save();
+    ctx.strokeStyle = CONFLICT_COLOR;
+    ctx.fillStyle = CONFLICT_COLOR;
+    ctx.lineWidth = 1.2;
+    for (const tp of toolPaths) {
+      if (!tp.conflict) continue;
+      const e = doc.entities[tp.index];
+      const center = entityCenter(e);
+      if (!center) continue;
+      const c = t.toCanvas(center);
+      const s = 6;
+      ctx.beginPath();
+      ctx.moveTo(c.x - s, c.y - s);
+      ctx.lineTo(c.x + s, c.y + s);
+      ctx.moveTo(c.x + s, c.y - s);
+      ctx.lineTo(c.x - s, c.y + s);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, t: ViewTransform, color: string): void {
@@ -78,4 +120,38 @@ function drawEntity(ctx: CanvasRenderingContext2D, e: Entity, t: ViewTransform, 
   }
 
   ctx.stroke();
+}
+
+function drawPath(
+  ctx: CanvasRenderingContext2D,
+  pts: Pt[],
+  closed: boolean,
+  t: ViewTransform,
+  color: string,
+): void {
+  if (pts.length === 0) return;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const c = t.toCanvas(p);
+    if (i === 0) ctx.moveTo(c.x, c.y);
+    else ctx.lineTo(c.x, c.y);
+  });
+  if (closed) ctx.closePath();
+  ctx.stroke();
+}
+
+function entityCenter(e: Entity): Pt | null {
+  switch (e.type) {
+    case 'circle':
+    case 'arc':
+      return e.c;
+    case 'line':
+      return { x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 };
+    case 'polyline': {
+      let sx = 0, sy = 0;
+      for (const p of e.pts) { sx += p.x; sy += p.y; }
+      return { x: sx / e.pts.length, y: sy / e.pts.length };
+    }
+  }
 }
