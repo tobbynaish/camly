@@ -4,7 +4,7 @@ Browser-Tool, das CNC-Frästeile aus DXF in fräsfertigen GRBL-G-Code übersetzt
 
 ## Status
 
-Welle 1, früh. Steht: **Schritt 2, DXF-Import und Canvas-Vorschau.**
+Welle 1, früh. Steht: **Schritt 3, Konturklassifikation mit Klick-Korrektur.** DXF-Import, Canvas-Vorschau, Setup-Leiste und automatische Außen-/Innen-/Bohrungs-Erkennung sind da, manuelle Korrektur per Klick möglich. KI-Parameter, CAM-Offset, Tabs, Dogbones und G-Code-Export kommen in den nächsten Schritten.
 
 ## Pipeline
 
