@@ -1,6 +1,9 @@
 import { buildToolPaths } from '../src/lib/cam/toolPath.ts';
 import { classifyDoc, entityContains, repPoint } from '../src/lib/cam/classify.ts';
 import { suggestParams, localExplanation } from '../src/lib/params/engine.ts';
+import { insertDogbones } from '../src/lib/cam/dogbone.ts';
+import { DEFAULT_TABS } from '../src/lib/cam/tabs.ts';
+import { generateGcode } from '../src/lib/cam/gcode.ts';
 
 const ents = [
   { type: 'polyline', pts: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }], closed: true },
@@ -68,3 +71,55 @@ console.log(localExplanation(
   { materialId: 'birke-multiplex', toolDiameter: 6, flutes: 2, stockThickness: 9 },
   suggestParams({ materialId: 'birke-multiplex', toolDiameter: 6, flutes: 2, stockThickness: 9 }),
 ));
+
+// --- G-004: CAM-Core und G-Code ---
+console.log('\n--- CAM: Dogbones, Tabs, G-Code ---');
+const camRoles = classifyDoc(ents);
+const camTool = buildToolPaths(ents, camRoles, 6);
+const camPaths = insertDogbones(ents, camTool.paths, 3);
+const innerBefore = camTool.paths[1].pts.length;
+const innerAfter = camPaths[1].pts.length;
+console.log(`Dogbones am Ausschnitt: ${innerBefore} -> ${innerAfter} Punkte (${(innerAfter - innerBefore) / 2} Bones)`);
+
+const tabCfg = { ...DEFAULT_TABS };
+const gc = generateGcode({
+  paths: camPaths,
+  params: { feed: 1000, plunge: 400, rpm: 10000, depthPerPass: 3 },
+  stockThickness: 9,
+  toolDiameter: 6,
+  tabs: tabCfg,
+});
+console.log(
+  `G-Code: ${gc.stats.lineCount} Zeilen, ${gc.stats.pathCount} Konturen, ${gc.stats.passCount} Durchgaenge, ` +
+  `${gc.stats.tabCount} Tabs, Fraesweg ${(gc.stats.cutLength / 1000).toFixed(1)} m, ca. ${gc.stats.estMinutes.toFixed(1)} min`,
+);
+
+// GRBL-Syntax-Validator: Kommentare in Klammern, Worte G/M/S/F/X/Y/Z mit Zahl,
+// nur unterstuetzte G- und M-Codes.
+function validateGrbl(text: string): string[] {
+  const errors: string[] = [];
+  const okG = new Set([0, 1, 17, 21, 90, 94]);
+  const okM = new Set([2, 3, 5]);
+  text.split('\n').forEach((raw, ln) => {
+    const line = raw.replace(/\([^)]*\)/g, '').trim();
+    if (!line) return;
+    for (const word of line.split(/\s+/)) {
+      const m = word.match(/^([GMSFXYZ])(-?\d+(?:\.\d+)?)$/);
+      if (!m) { errors.push(`Zeile ${ln + 1}: ungueltiges Wort "${word}"`); continue; }
+      const val = Number(m[2]);
+      if (m[1] === 'G' && !okG.has(val)) errors.push(`Zeile ${ln + 1}: G${val} nicht unterstuetzt`);
+      if (m[1] === 'M' && !okM.has(val)) errors.push(`Zeile ${ln + 1}: M${val} nicht unterstuetzt`);
+      if ((m[1] === 'F' || m[1] === 'S') && val <= 0) errors.push(`Zeile ${ln + 1}: ${word} muss positiv sein`);
+    }
+  });
+  return errors;
+}
+const grblErrors = validateGrbl(gc.text);
+console.log(`GRBL-Validator: ${grblErrors.length === 0 ? 'valide, 0 Fehler' : grblErrors.slice(0, 5).join(' | ')}`);
+
+// Tab-Hebungen vorhanden? Im untersten Durchgang muss Z auf Tab-Hoehe (-6) steigen.
+const tabLifts = gc.text.split('\n').filter((l) => /^G1 Z-6(\s|$)/.test(l)).length;
+console.log(`Tab-Hebungen auf Z-6: ${tabLifts}`);
+
+console.log('\nErste 20 Zeilen G-Code:');
+console.log(gc.text.split('\n').slice(0, 20).join('\n'));

@@ -14,12 +14,14 @@ const COLORS: Record<string, string> = {
 
 const TOOL_COLOR = '#B04A3F';     // Fräser-Zentrumpfad, gestrichelt
 const CONFLICT_COLOR = '#B04A3F'; // Konflikt-Markierung
+const TAB_COLOR = '#788C5D';      // Haltestege
 
 export function renderDxf(
   canvas: HTMLCanvasElement,
   doc: DxfDoc,
   roles?: Role[],
   toolPaths?: ToolPath[],
+  tabMarkers?: Pt[],
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -72,6 +74,17 @@ export function renderDxf(
       ctx.moveTo(c.x + s, c.y - s);
       ctx.lineTo(c.x - s, c.y + s);
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Haltestege als kleine Quadrate auf dem Zentrumpfad (Schritt 5).
+  if (tabMarkers && tabMarkers.length) {
+    ctx.save();
+    ctx.fillStyle = TAB_COLOR;
+    for (const m of tabMarkers) {
+      const c = t.toCanvas(m);
+      ctx.fillRect(c.x - 3.5, c.y - 3.5, 7, 7);
     }
     ctx.restore();
   }

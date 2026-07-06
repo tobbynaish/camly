@@ -10,6 +10,9 @@
   import { MATERIALS } from './lib/params/materials';
   import { suggestParams, localExplanation } from './lib/params/engine';
   import { explainWithClaude, loadApiKey, saveApiKey } from './lib/params/explain';
+  import { insertDogbones } from './lib/cam/dogbone';
+  import { DEFAULT_TABS } from './lib/cam/tabs';
+  import { generateGcode, tabMarkersFor } from './lib/cam/gcode';
   import type { DxfDoc } from './lib/dxf/types';
 
   let canvas: HTMLCanvasElement;
@@ -34,6 +37,12 @@
   let kiError = '';
   let kiLoading = false;
 
+  // Schritt 5: CAM
+  let tabsEnabled = true;
+  let tabWidth = 8;
+  let tabHeight = 3;
+  let dogbonesEnabled = true;
+
   const STEPS = [
     { n: 1, label: 'Upload' },
     { n: 2, label: 'Prüfen' },
@@ -42,7 +51,7 @@
     { n: 5, label: 'CAM' },
     { n: 6, label: 'Export' },
   ];
-  const BUILT_UP_TO = 4; // bis hierhin ist echte Funktion da
+  const BUILT_UP_TO = 6; // bis hierhin ist echte Funktion da
 
   const TYPE_LABEL: Record<string, string> = {
     line: 'Linien', polyline: 'Polylinien', circle: 'Kreise', arc: 'Bögen',
@@ -72,7 +81,14 @@
 
   function draw() {
     if (!canvas || !doc) return;
-    renderDxf(canvas, doc, step >= 3 ? roles : undefined, step >= 3 ? toolPaths?.paths : undefined);
+    const paths = step >= 5 && camPaths ? camPaths : toolPaths?.paths;
+    renderDxf(
+      canvas,
+      doc,
+      step >= 3 ? roles : undefined,
+      step >= 3 ? paths : undefined,
+      step >= 5 ? tabMarkers : undefined,
+    );
   }
 
   function goTo(n: number) {
@@ -132,6 +148,51 @@
   $: suggestion = suggestParams(paramInput);
   // Bei geänderten Eingaben ist eine alte KI-Begründung nicht mehr gültig.
   $: if (suggestion) { kiText = ''; kiError = ''; }
+
+  // Schritt 5: CAM-Pfade mit Dogbones, Tab-Marker für die Vorschau.
+  $: tabCfg = { ...DEFAULT_TABS, enabled: tabsEnabled, width: tabWidth, height: tabHeight };
+  $: camPaths =
+    doc && step >= 5 && toolPaths
+      ? dogbonesEnabled
+        ? insertDogbones(doc.entities, toolPaths.paths, toolDiameter / 2)
+        : toolPaths.paths
+      : null;
+  $: tabMarkers = camPaths ? tabMarkersFor(camPaths, tabCfg, toolDiameter) : [];
+  $: if (doc && step >= 5 && (camPaths || tabMarkers)) draw();
+
+  // Schritt 6: G-Code.
+  $: gcode =
+    doc && step >= 6 && camPaths
+      ? generateGcode({
+          paths: camPaths,
+          params: {
+            feed: suggestion.feed,
+            plunge: suggestion.plunge,
+            rpm: suggestion.rpm,
+            depthPerPass: suggestion.depthPerPass,
+          },
+          stockThickness,
+          toolDiameter,
+          tabs: tabCfg,
+        })
+      : null;
+
+  function downloadGcode() {
+    if (!gcode) return;
+    const blob = new Blob([gcode.text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (fileName.replace(/\.dxf$/i, '') || 'camly') + '.nc';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function fmtMinutes(min: number): string {
+    if (min < 1) return 'unter 1 min';
+    if (min < 60) return `${Math.round(min)} min`;
+    return `${Math.floor(min / 60)} h ${Math.round(min % 60)} min`;
+  }
 
   async function askClaude() {
     kiError = '';
@@ -336,8 +397,78 @@
 
     <div class="actions">
       <button class="btn ghost" on:click={() => goTo(3)}>← Zurück</button>
-      <button class="btn next" disabled title="Schritt 5 ist im Bau">Weiter zu CAM →</button>
-      <span class="actions-note">Schritt 5 und 6 sind als Nächstes dran.</span>
+      <button class="btn next" on:click={() => goTo(5)}>Weiter zu CAM →</button>
+    </div>
+
+  {:else if step === 5 && doc}
+    <p class="hint2">
+      CAM-Vorbereitung: <strong>Haltestege</strong> (grüne Quadrate) halten die Teile in der Platte,
+      <strong>Dogbones</strong> räumen die Ecken der Ausschnitte frei, damit eckige Teile passen.
+    </p>
+
+    <div class="setup">
+      <label class="field check">
+        <span>Haltestege</span>
+        <span class="inwrap"><input type="checkbox" bind:checked={tabsEnabled} /> aktiv</span>
+      </label>
+      {#if tabsEnabled}
+        <label class="field">
+          <span>Steg-Breite</span>
+          <span class="inwrap"><input type="number" min="3" step="1" bind:value={tabWidth} /> mm</span>
+        </label>
+        <label class="field">
+          <span>Steg-Höhe</span>
+          <span class="inwrap"><input type="number" min="1" step="0.5" bind:value={tabHeight} /> mm</span>
+        </label>
+      {/if}
+      <label class="field check">
+        <span>Dogbones</span>
+        <span class="inwrap"><input type="checkbox" bind:checked={dogbonesEnabled} /> aktiv</span>
+      </label>
+    </div>
+
+    {#if toolPaths && toolPaths.conflicts > 0}
+      <p class="conflict">
+        {toolPaths.conflicts} {toolPaths.conflicts === 1 ? 'Kontur wird' : 'Konturen werden'} wegen
+        Fräser-Konflikt übersprungen (siehe Schritt 3).
+      </p>
+    {/if}
+
+    <div class="canvas-wrap"><canvas bind:this={canvas}></canvas></div>
+
+    <div class="actions">
+      <button class="btn ghost" on:click={() => goTo(4)}>← Zurück</button>
+      <button class="btn next" on:click={() => goTo(6)}>Weiter zu Export →</button>
+    </div>
+
+  {:else if step === 6 && doc && gcode}
+    <p class="hint2">
+      GRBL-G-Code für die <strong>Maslow 4</strong>. Nullpunkt: XY wie im DXF,
+      Z0 auf der Materialoberseite. Reihenfolge: Bohrungen, Ausschnitte, Außenschnitte.
+    </p>
+
+    <div class="job">
+      <div class="job-item"><span class="job-k">Konturen</span><span class="job-v">{gcode.stats.pathCount}</span></div>
+      <div class="job-item"><span class="job-k">Durchgänge</span><span class="job-v">{gcode.stats.passCount}</span></div>
+      <div class="job-item"><span class="job-k">Haltestege</span><span class="job-v">{gcode.stats.tabCount}</span></div>
+      <div class="job-item"><span class="job-k">Fräsweg</span><span class="job-v">{fmt(gcode.stats.cutLength / 1000)} m</span></div>
+      <div class="job-item"><span class="job-k">Dauer (geschätzt)</span><span class="job-v">{fmtMinutes(gcode.stats.estMinutes)}</span></div>
+      <div class="job-item"><span class="job-k">Zeilen</span><span class="job-v">{gcode.stats.lineCount}</span></div>
+    </div>
+
+    {#if gcode.stats.skippedConflict > 0 || gcode.stats.skippedOpen > 0}
+      <p class="conflict">
+        Übersprungen: {gcode.stats.skippedConflict} mit Fräser-Konflikt,
+        {gcode.stats.skippedOpen} offene Konturen. Offene Konturen bekommen erst später eine Gravur-Strategie.
+      </p>
+    {/if}
+
+    <pre class="gcode-preview">{gcode.text.split('\n').slice(0, 26).join('\n')}
+{gcode.stats.lineCount > 26 ? `… ${gcode.stats.lineCount - 26} weitere Zeilen` : ''}</pre>
+
+    <div class="actions">
+      <button class="btn ghost" on:click={() => goTo(5)}>← Zurück</button>
+      <button class="btn next" on:click={downloadGcode}>G-Code herunterladen (.nc)</button>
     </div>
   {/if}
 </main>
