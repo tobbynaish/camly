@@ -1,5 +1,6 @@
 import { buildToolPaths } from '../src/lib/cam/toolPath.ts';
 import { classifyDoc, entityContains, repPoint } from '../src/lib/cam/classify.ts';
+import { suggestParams, localExplanation } from '../src/lib/params/engine.ts';
 
 const ents = [
   { type: 'polyline', pts: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 150 }, { x: 0, y: 150 }], closed: true },
@@ -49,3 +50,21 @@ console.log('rechteck tool=3 conflicts:', res2.conflicts);
 for (const tp of res2.paths) {
   console.log('  idx', tp.index, 'role', tp.role, 'pts', tp.pts.length, 'conflict', tp.conflict, tp.conflictReason ?? '');
 }
+// Parameter-Engine: Birke mit typischen Fräsern
+console.log('\n--- Parameter-Engine ---');
+for (const [d, z] of [[3, 2], [6, 2], [8, 1]] as const) {
+  const s = suggestParams({ materialId: 'birke-multiplex', toolDiameter: d, flutes: z, stockThickness: 9 });
+  console.log(
+    `Birke D${d} z${z}: rpm=${s.rpm} (Stellrad ${s.dial}) feed=${s.feed} plunge=${s.plunge} ` +
+    `doc=${s.depthPerPass}x${s.passCount} chipload=${s.chipload} warn=${s.warnings.length}`,
+  );
+}
+const sPappel = suggestParams({ materialId: 'pappel-sperrholz', toolDiameter: 6, flutes: 2, stockThickness: 6 });
+console.log(`Pappel D6 z2: feed=${sPappel.feed} doc=${sPappel.depthPerPass}x${sPappel.passCount} chipload=${sPappel.chipload}`);
+const sBig = suggestParams({ materialId: 'birke-multiplex', toolDiameter: 12, flutes: 2, stockThickness: 18 });
+console.log(`Birke D12 z2: feed=${sBig.feed} chipload=${sBig.chipload} warnings=${JSON.stringify(sBig.warnings)}`);
+console.log('\nLokale Begründung (Birke D6 z2, 9mm):');
+console.log(localExplanation(
+  { materialId: 'birke-multiplex', toolDiameter: 6, flutes: 2, stockThickness: 9 },
+  suggestParams({ materialId: 'birke-multiplex', toolDiameter: 6, flutes: 2, stockThickness: 9 }),
+));

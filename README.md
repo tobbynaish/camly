@@ -4,7 +4,7 @@ Browser-Tool, das CNC-Frästeile aus DXF in fräsfertigen GRBL-G-Code übersetzt
 
 ## Status
 
-Welle 1, früh. Steht: **Schritt 3, Konturklassifikation mit Klick-Korrektur und Fräser-Eingriff.** DXF-Import, Canvas-Vorschau, Setup-Leiste, automatische Außen-/Innen-/Bohrungs-Erkennung, manuelle Korrektur per Klick, Fräser-Zentrumpfad live in der Vorschau, Konflikt-Warnung bei zu kleinen Bohrungen. KI-Parameter, Tabs, Dogbones und G-Code-Export kommen in den nächsten Schritten.
+Welle 1, früh. Steht: **Schritt 4, Fräsparameter mit Lookup-Tabelle und Claude-Begründung.** DXF-Import, Canvas-Vorschau, Setup-Leiste, automatische Außen-/Innen-/Bohrungs-Erkennung mit Klick-Korrektur, Fräser-Zentrumpfad live in der Vorschau, Konflikt-Warnung bei zu kleinen Bohrungen. Neu in Schritt 4: Parameter-Engine für Birke Multiplex, Pappel, MDF und Massivholz auf der Maslow 4 mit Makita RT0701C (Drehzahl, Stellrad, Vorschub, Zustellung, Spanungsdicke), regelbasierte Begründung immer dabei, optional begründet Claude die Werte direkt im Browser (eigener API-Key, kein Server). Tabs, Dogbones und G-Code-Export kommen in den nächsten Schritten.
 
 ## Pipeline
 

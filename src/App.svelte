@@ -7,6 +7,9 @@
   import { classifyDoc, cycleRole, type Role } from './lib/cam/classify';
   import { buildToolPaths } from './lib/cam/toolPath';
   import { analyzeJob } from './lib/analyze/jobInfo';
+  import { MATERIALS } from './lib/params/materials';
+  import { suggestParams, localExplanation } from './lib/params/engine';
+  import { explainWithClaude, loadApiKey, saveApiKey } from './lib/params/explain';
   import type { DxfDoc } from './lib/dxf/types';
 
   let canvas: HTMLCanvasElement;
@@ -23,6 +26,14 @@
   let stockThickness = 9;
   let margin = 15;
 
+  // Schritt 4: Parameter
+  let materialId = 'birke-multiplex';
+  let flutes = 2;
+  let apiKey = loadApiKey();
+  let kiText = '';
+  let kiError = '';
+  let kiLoading = false;
+
   const STEPS = [
     { n: 1, label: 'Upload' },
     { n: 2, label: 'Prüfen' },
@@ -31,7 +42,7 @@
     { n: 5, label: 'CAM' },
     { n: 6, label: 'Export' },
   ];
-  const BUILT_UP_TO = 3; // bis hierhin ist echte Funktion da
+  const BUILT_UP_TO = 4; // bis hierhin ist echte Funktion da
 
   const TYPE_LABEL: Record<string, string> = {
     line: 'Linien', polyline: 'Polylinien', circle: 'Kreise', arc: 'Bögen',
@@ -115,6 +126,25 @@
 
   // Neu zeichnen, wenn Fräser-Ø oder Rollen sich ändern.
   $: if (doc && step >= 3 && (toolDiameter || roles || toolPaths)) draw();
+
+  // Schritt 4: Parameter-Vorschlag aus der Lookup-Tabelle.
+  $: paramInput = { materialId, toolDiameter, flutes, stockThickness };
+  $: suggestion = suggestParams(paramInput);
+  // Bei geänderten Eingaben ist eine alte KI-Begründung nicht mehr gültig.
+  $: if (suggestion) { kiText = ''; kiError = ''; }
+
+  async function askClaude() {
+    kiError = '';
+    kiLoading = true;
+    saveApiKey(apiKey);
+    try {
+      kiText = await explainWithClaude(paramInput, suggestion, apiKey.trim());
+    } catch (e) {
+      kiError = (e as Error).message;
+    } finally {
+      kiLoading = false;
+    }
+  }
 </script>
 
 <svelte:window on:resize={onResize} />
@@ -230,8 +260,84 @@
 
     <div class="actions">
       <button class="btn ghost" on:click={() => goTo(2)}>← Zurück</button>
-      <button class="btn next" disabled title="Schritt 4 ist im Bau">Weiter zu Parameter →</button>
-      <span class="actions-note">Schritt 4 bis 6 sind als Nächstes dran.</span>
+      <button class="btn next" on:click={() => goTo(4)}>Weiter zu Parameter →</button>
+    </div>
+
+  {:else if step === 4 && doc}
+    <p class="hint2">
+      Fräsparameter aus der Lookup-Tabelle für die <strong>Maslow 4 mit Makita RT0701C</strong>.
+      Material wählen, Werte prüfen, optional von Claude begründen lassen.
+    </p>
+
+    <div class="setup">
+      <label class="field">
+        <span>Material</span>
+        <select bind:value={materialId}>
+          {#each MATERIALS as m}
+            <option value={m.id}>{m.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="field">
+        <span>Schneiden</span>
+        <select bind:value={flutes}>
+          <option value={1}>1 (Einschneider)</option>
+          <option value={2}>2 (Zweischneider)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Fräser-Ø</span>
+        <span class="inwrap"><input type="number" min="0.5" step="0.5" bind:value={toolDiameter} /> mm</span>
+      </label>
+      <label class="field">
+        <span>Materialstärke</span>
+        <span class="inwrap"><input type="number" min="1" step="1" bind:value={stockThickness} /> mm</span>
+      </label>
+    </div>
+
+    <div class="job">
+      <div class="job-item"><span class="job-k">Drehzahl</span><span class="job-v">{suggestion.rpm.toLocaleString('de-DE')} U/min</span></div>
+      <div class="job-item"><span class="job-k">Makita-Stellrad</span><span class="job-v">{suggestion.dial}</span></div>
+      <div class="job-item"><span class="job-k">Vorschub</span><span class="job-v">{suggestion.feed} mm/min</span></div>
+      <div class="job-item"><span class="job-k">Eintauchen</span><span class="job-v">{suggestion.plunge} mm/min</span></div>
+      <div class="job-item"><span class="job-k">Zustellung</span><span class="job-v">{suggestion.depthPerPass} mm</span></div>
+      <div class="job-item"><span class="job-k">Durchgänge</span><span class="job-v">{suggestion.passCount}</span></div>
+      <div class="job-item"><span class="job-k">Spanungsdicke</span><span class="job-v">{suggestion.chipload} mm/Zahn</span></div>
+    </div>
+
+    {#each suggestion.warnings as w}
+      <p class="conflict">{w}</p>
+    {/each}
+
+    <div class="explain">
+      <div class="explain-head">Begründung</div>
+      <p class="explain-text">{kiText || localExplanation(paramInput, suggestion)}</p>
+      {#if kiText}
+        <p class="explain-source">Begründet von Claude (claude-opus-4-8).</p>
+      {/if}
+
+      <div class="ki-row">
+        <input
+          class="key-input"
+          type="password"
+          placeholder="Anthropic API-Key (sk-ant-…)"
+          bind:value={apiKey}
+        />
+        <button class="btn" on:click={askClaude} disabled={kiLoading || !apiKey.trim()}>
+          {kiLoading ? 'Claude denkt nach…' : 'Von Claude begründen lassen'}
+        </button>
+      </div>
+      {#if kiError}<p class="error">{kiError}</p>{/if}
+      <p class="ki-note">
+        Ohne Key steht oben die regelbasierte Begründung der Tabelle. Der Key bleibt in diesem
+        Browser (localStorage) und geht direkt an api.anthropic.com, camly hat keinen Server.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" on:click={() => goTo(3)}>← Zurück</button>
+      <button class="btn next" disabled title="Schritt 5 ist im Bau">Weiter zu CAM →</button>
+      <span class="actions-note">Schritt 5 und 6 sind als Nächstes dran.</span>
     </div>
   {/if}
 </main>
