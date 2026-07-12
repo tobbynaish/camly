@@ -2,8 +2,11 @@ import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Auf GitHub Pages liegt die App unter /camly/ (Projektseite). Lokal (dev und
+// preview) bleibt sie unter /, damit npm run dev unverändert startet.
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/camly/' : '/',
   plugins: [
     svelte(),
     VitePWA({
@@ -18,4 +21,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))
